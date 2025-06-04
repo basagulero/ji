@@ -21,7 +21,7 @@ async def fetch_stock_data():
 
     stock_headers = [
         "Gear Stock", "Egg Stock", "Seeds Stock",
-        "Honey Stock", "Cosmetics Stock"  # Updated headers
+        "Honey Stock", "Cosmetics Stock"
     ]
 
     embed = discord.Embed(
@@ -39,7 +39,6 @@ async def fetch_stock_data():
     for header in stock_headers:
         stock_content = ""
 
-        # Locate the correct section for each stock category
         section = soup.find("h2", string=header)
         if section:
             items = section.find_next("section").find_all("article")
@@ -54,13 +53,10 @@ async def fetch_stock_data():
                         quantity = quantity_tag.text.strip()
                         stock_content += f"🔹 {name} ({quantity})\n"
 
-                        # Check if the Master Sprinkler is available
                         if header == "Gear Stock" and "Master Sprinkler" in name:
                             mention_everyone = True
-
             else:
                 stock_content = "❌ No items available"
-
         else:
             stock_content = "❌ Stock category not found"
 
@@ -69,7 +65,7 @@ async def fetch_stock_data():
     return embed, mention_everyone
 
 async def update_stock_message(channel):
-    """Updates the stock message at precise 5-minute and 30-second intervals."""
+    """Updates the stock message aligned to 6m30s intervals in PHT."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
@@ -78,16 +74,18 @@ async def update_stock_message(channel):
             new_embed, mention_everyone = await fetch_stock_data()
             await stock_message.edit(embed=new_embed)
 
-            # Notify @everyone if Master Sprinkler is found
             if mention_everyone:
                 await channel.send("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
 
-            # Sync updates to exact 5-minute and 30-second marks
+            # Calculate next aligned update time in PHT
             ph_tz = pytz.timezone("Asia/Manila")
             now = datetime.datetime.now(ph_tz)
+            total_seconds = now.minute * 60 + now.second
+            interval = 390  # 6 minutes 30 seconds = 390 seconds
+            next_seconds = ((total_seconds // interval) + 1) * interval
 
-            next_update = (now.minute // 5 + 1) * 5
-            wait_time = ((next_update - now.minute) * 60) - now.second + 30
+            next_time = now.replace(second=0, microsecond=0) + datetime.timedelta(seconds=(next_seconds - total_seconds))
+            wait_time = (next_time - now).total_seconds()
 
             await asyncio.sleep(wait_time)
 
