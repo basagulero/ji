@@ -15,6 +15,7 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 task_started = False  # Prevent multiple tasks from starting
+last_egg_mention_time_pht = None  # Track Egg Stock mention cooldown (PHT-based)
 
 def get_next_aligned_time(interval_seconds, timezone):
     """Calculate seconds until the next aligned interval (e.g., every 420s) in given timezone."""
@@ -26,6 +27,8 @@ def get_next_aligned_time(interval_seconds, timezone):
 
 async def fetch_stock_data():
     """Fetch and format all stock categories from the website."""
+    global last_egg_mention_time_pht
+
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(URL, headers=headers, timeout=10)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -69,15 +72,27 @@ async def fetch_stock_data():
 
                         # Egg Stock
                         elif header == "Egg Stock":
-                            if "Mythical Egg" in name:
+                            now_pht = datetime.datetime.now(ph_tz)
+                            can_mention_eggs = (
+                                last_egg_mention_time_pht is None or
+                                (now_pht - last_egg_mention_time_pht).total_seconds() >= 1320  # 22 minutes
+                            )
+
+                            triggered = False
+                            if can_mention_eggs:
+                                if "Mythical Egg" in name:
+                                    special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
+                                    triggered = True
+                                elif "Bug Egg" in name:
+                                    special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
+                                    triggered = True
+                                elif "Legendary Egg" in name:
+                                    special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
+                                    triggered = True
+
+                            if triggered:
                                 mention_everyone = True
-                                special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
-                            elif "Bug Egg" in name:
-                                mention_everyone = True
-                                special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
-                            elif "Legendary Egg" in name:
-                                mention_everyone = True
-                                special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
+                                last_egg_mention_time_pht = now_pht
 
                         # Seeds Stock
                         elif header == "Seeds Stock":
