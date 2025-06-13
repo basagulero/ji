@@ -6,7 +6,7 @@ import datetime
 import pytz
 import os
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # Make sure your token is set in environment variables
+TOKEN = os.getenv("DISCORD_TOKEN")  # Ensure this is set in your environment
 URL = 'https://growagarden.gg/stocks'
 CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
 
@@ -37,6 +37,7 @@ async def fetch_stock_data():
     embed.set_footer(text=f"Updated at {now} PHT")
 
     mention_everyone = False
+    special_mention_messages = []
 
     for header in stock_headers:
         stock_content = ""
@@ -51,8 +52,21 @@ async def fetch_stock_data():
                         name = name_tag.text.strip()
                         quantity = quantity_tag.text.strip()
                         stock_content += f"🔹 {name} ({quantity})\n"
+
+                        # Check for special items
                         if header == "Gear Stock" and "Master Sprinkler" in name:
                             mention_everyone = True
+                            special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
+                        elif header == "Egg Stock":
+                            if "Mythical Egg" in name:
+                                mention_everyone = True
+                                special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
+                            elif "Bug Egg" in name:
+                                mention_everyone = True
+                                special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
+                            elif "Legendary Egg" in name:
+                                mention_everyone = True
+                                special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
             else:
                 stock_content = "❌ No items available"
         else:
@@ -60,27 +74,26 @@ async def fetch_stock_data():
         
         embed.add_field(name=header, value=stock_content, inline=False)
 
-    return embed, mention_everyone
+    return embed, mention_everyone, special_mention_messages
 
 async def update_stock_message(channel):
-    """Update the stock message every 6m30s and mention everyone if Master Sprinkler is in stock."""
+    """Update the stock message every 6m30s and mention everyone if special items are in stock."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
     while True:
         try:
-            # Fetch and update
-            new_embed, mention_everyone = await fetch_stock_data()
+            new_embed, mention_everyone, special_mention_messages = await fetch_stock_data()
             await stock_message.edit(embed=new_embed)
 
-            if mention_everyone:
-                await channel.send("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
+            if mention_everyone and special_mention_messages:
+                await channel.send("\n".join(special_mention_messages))
 
-            # Calculate next aligned time (6 minutes and 30 seconds)
+            # Calculate time until the next 6m30s interval
             ph_tz = pytz.timezone("Asia/Manila")
             now = datetime.datetime.now(ph_tz)
             total_seconds = now.minute * 60 + now.second
-            interval = 390  # 6 minutes 30 seconds
+            interval = 390  # 6 minutes and 30 seconds
             next_seconds = ((total_seconds // interval) + 1) * interval
             next_time = now.replace(second=0, microsecond=0) + datetime.timedelta(seconds=(next_seconds - total_seconds))
             wait_time = (next_time - now).total_seconds()
@@ -94,6 +107,7 @@ async def update_stock_message(channel):
                 color=discord.Color.red()
             )
             await stock_message.edit(embed=error_embed)
+            await asyncio.sleep(60)  # Wait 1 minute before retrying
 
 @client.event
 async def on_ready():
