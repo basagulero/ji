@@ -5,6 +5,7 @@ import asyncio
 import datetime
 import pytz
 import os
+import math
 
 TOKEN = os.getenv("DISCORD_TOKEN")  # Ensure this is set in your environment
 URL = 'https://growagarden.gg/stocks'
@@ -14,6 +15,14 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 task_started = False  # Prevent multiple tasks from starting
+
+def get_next_aligned_time(interval_seconds, timezone):
+    """Calculate seconds until the next aligned interval (e.g., every 390s) in given timezone."""
+    now = datetime.datetime.now(timezone)
+    total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
+    next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
+    delta_seconds = next_multiple - total_seconds_today
+    return delta_seconds
 
 async def fetch_stock_data():
     """Fetch and format all stock categories from the website."""
@@ -89,7 +98,7 @@ async def fetch_stock_data():
     return embed, mention_everyone, special_mention_messages
 
 async def update_stock_message(channel):
-    """Update the stock message every 6m30s and mention everyone if special items are in stock."""
+    """Update the stock message every 6m30s based on PHT and mention everyone if special items are in stock."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
@@ -101,17 +110,6 @@ async def update_stock_message(channel):
             if mention_everyone and special_mention_messages:
                 await channel.send("\n".join(special_mention_messages))
 
-            # Calculate time until the next 6m30s interval
-            ph_tz = pytz.timezone("Asia/Manila")
-            now = datetime.datetime.now(ph_tz)
-            total_seconds = now.minute * 60 + now.second
-            interval = 390  # 6 minutes and 30 seconds
-            next_seconds = ((total_seconds // interval) + 1) * interval
-            next_time = now.replace(second=0, microsecond=0) + datetime.timedelta(seconds=(next_seconds - total_seconds))
-            wait_time = (next_time - now).total_seconds()
-
-            await asyncio.sleep(wait_time)
-
         except Exception as e:
             error_embed = discord.Embed(
                 title="Error Fetching Data",
@@ -119,7 +117,12 @@ async def update_stock_message(channel):
                 color=discord.Color.red()
             )
             await stock_message.edit(embed=error_embed)
-            await asyncio.sleep(60)  # Wait 1 minute before retrying
+
+        # Align to the next exact 6m30s PHT mark
+        ph_tz = pytz.timezone("Asia/Manila")
+        interval_seconds = 390  # 6 minutes and 30 seconds
+        sleep_seconds = get_next_aligned_time(interval_seconds, ph_tz)
+        await asyncio.sleep(sleep_seconds)
 
 @client.event
 async def on_ready():
