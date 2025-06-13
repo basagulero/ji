@@ -53,10 +53,12 @@ async def fetch_stock_data():
                         quantity = quantity_tag.text.strip()
                         stock_content += f"🔹 {name} ({quantity})\n"
 
-                        # Check for special items
+                        # Gear Stock
                         if header == "Gear Stock" and "Master Sprinkler" in name:
                             mention_everyone = True
                             special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
+
+                        # Egg Stock
                         elif header == "Egg Stock":
                             if "Mythical Egg" in name:
                                 mention_everyone = True
@@ -67,6 +69,16 @@ async def fetch_stock_data():
                             elif "Legendary Egg" in name:
                                 mention_everyone = True
                                 special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
+
+                        # Seeds Stock
+                        elif header == "Seeds Stock":
+                            if "Beanstalk" in name:
+                                mention_everyone = True
+                                special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
+                            elif "Ember Lily" in name:
+                                mention_everyone = True
+                                special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
+
             else:
                 stock_content = "❌ No items available"
         else:
