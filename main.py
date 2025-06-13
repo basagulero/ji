@@ -17,7 +17,7 @@ client = discord.Client(intents=intents)
 task_started = False  # Prevent multiple tasks from starting
 
 def get_next_aligned_time(interval_seconds, timezone):
-    """Calculate seconds until the next aligned interval (e.g., every 390s) in given timezone."""
+    """Calculate seconds until the next aligned interval (e.g., every 420s) in given timezone."""
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
@@ -27,7 +27,7 @@ def get_next_aligned_time(interval_seconds, timezone):
 async def fetch_stock_data():
     """Fetch and format all stock categories from the website."""
     headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(URL, headers=headers)
+    response = requests.get(URL, headers=headers, timeout=10)
     soup = BeautifulSoup(response.text, 'html.parser')
 
     stock_headers = [
@@ -98,7 +98,7 @@ async def fetch_stock_data():
     return embed, mention_everyone, special_mention_messages
 
 async def update_stock_message(channel):
-    """Update the stock message every 6m30s based on PHT and mention everyone if special items are in stock."""
+    """Update the stock message every 7 minutes based on PHT and mention everyone if special items are in stock."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
@@ -111,6 +111,7 @@ async def update_stock_message(channel):
                 await channel.send("\n".join(special_mention_messages))
 
         except Exception as e:
+            print(f"Error fetching stock data: {e}")
             error_embed = discord.Embed(
                 title="Error Fetching Data",
                 description=str(e),
@@ -118,9 +119,9 @@ async def update_stock_message(channel):
             )
             await stock_message.edit(embed=error_embed)
 
-        # Align to the next exact 6m30s PHT mark
+        # Align to the next exact 7-minute PHT mark
         ph_tz = pytz.timezone("Asia/Manila")
-        interval_seconds = 390  # 6 minutes and 30 seconds
+        interval_seconds = 420  # 7 minutes
         sleep_seconds = get_next_aligned_time(interval_seconds, ph_tz)
         await asyncio.sleep(sleep_seconds)
 
@@ -130,8 +131,15 @@ async def on_ready():
     print(f'✅ Logged in as {client.user}')
     channel = client.get_channel(CHANNEL_ID)
 
-    if channel and not task_started:
+    if channel is None:
+        print(f"⚠️ Channel with ID {CHANNEL_ID} not found or bot has no access.")
+        return
+
+    if not task_started:
         task_started = True
         client.loop.create_task(update_stock_message(channel))
+
+if not TOKEN:
+    raise EnvironmentError("DISCORD_TOKEN is not set in the environment.")
 
 client.run(TOKEN)
