@@ -75,7 +75,7 @@ async def fetch_stock_data():
                             now_pht = datetime.datetime.now(ph_tz)
                             can_mention_eggs = (
                                 last_egg_mention_time_pht is None or
-                                (now_pht - last_egg_mention_time_pht).total_seconds() >= 1320  # 22 minutes
+                                (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920  # 32 minutes
                             )
 
                             triggered = False
