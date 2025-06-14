@@ -18,7 +18,7 @@ task_started = False  # Prevent multiple tasks from starting
 last_egg_mention_time_pht = None  # Track Egg Stock mention cooldown (PHT-based)
 
 def get_next_aligned_time(interval_seconds, timezone):
-    """Calculate seconds until the next aligned interval (e.g., every 420s) in given timezone."""
+    """Calculate seconds until the next aligned interval (e.g., every 360s) in given timezone."""
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
@@ -113,7 +113,7 @@ async def fetch_stock_data():
     return embed, mention_everyone, special_mention_messages
 
 async def update_stock_message(channel):
-    """Update the stock message every 7 minutes based on PHT and mention everyone if special items are in stock."""
+    """Update the stock message every 6 minutes based on PHT and mention everyone if special items are in stock."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
@@ -134,9 +134,9 @@ async def update_stock_message(channel):
             )
             await stock_message.edit(embed=error_embed)
 
-        # Align to the next exact 7-minute PHT mark
+        # Align to the next exact 6-minute PHT mark
         ph_tz = pytz.timezone("Asia/Manila")
-        interval_seconds = 420  # 7 minutes
+        interval_seconds = 360  # 6 minutes
         sleep_seconds = get_next_aligned_time(interval_seconds, ph_tz)
         await asyncio.sleep(sleep_seconds)
 
