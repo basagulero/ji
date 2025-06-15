@@ -102,7 +102,10 @@ async def fetch_stock_data():
                             elif "Ember Lily" in name:
                                 mention_everyone = True
                                 special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
-
+                            elif "Sugar Apple" in name:
+                                mention_everyone = True
+                                special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
+                                
             else:
                 stock_content = "❌ No items available"
         else:
