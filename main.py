@@ -15,18 +15,18 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 task_started = False  # Prevent multiple tasks from starting
-last_egg_mention_time_pht = None  # Track Egg Stock mention cooldown (32 minutes)
-
+last_egg_mention_time_pht = None  # Track Egg Stock mention cooldown (PHT-based)
 
 def get_next_aligned_time(interval_seconds, timezone):
+    """Calculate seconds until the next aligned interval (e.g., every 360s) in given timezone."""
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
     delta_seconds = next_multiple - total_seconds_today
     return delta_seconds
 
-
 async def fetch_stock_data():
+    """Fetch and format all stock categories from the website."""
     global last_egg_mention_time_pht
 
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -45,19 +45,11 @@ async def fetch_stock_data():
 
     # Timestamp in Philippine Time
     ph_tz = pytz.timezone("Asia/Manila")
-    now_pht = datetime.datetime.now(ph_tz)
-    now_str = now_pht.strftime("%Y-%m-%d %H:%M:%S")
-    embed.set_footer(text=f"Updated at {now_str} PHT")
+    now = datetime.datetime.now(ph_tz).strftime("%Y-%m-%d %H:%M:%S")
+    embed.set_footer(text=f"Updated at {now} PHT")
 
     mention_everyone = False
     special_mention_messages = []
-
-    # Handle cooldown for non-egg mentions (5 minutes)
-    last_special_mention_time_pht = getattr(fetch_stock_data, "last_special_mention_time_pht", None)
-    can_mention_special = (
-        last_special_mention_time_pht is None or
-        (now_pht - last_special_mention_time_pht).total_seconds() >= 300  # 5 minutes
-    )
 
     for header in stock_headers:
         stock_content = ""
@@ -74,12 +66,13 @@ async def fetch_stock_data():
                         stock_content += f"🔹 {name} ({quantity})\n"
 
                         # Gear Stock
-                        if header == "Gear Stock" and "Master Sprinkler" in name and can_mention_special:
+                        if header == "Gear Stock" and "Master Sprinkler" in name:
                             mention_everyone = True
                             special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
 
                         # Egg Stock
                         elif header == "Egg Stock":
+                            now_pht = datetime.datetime.now(ph_tz)
                             can_mention_eggs = (
                                 last_egg_mention_time_pht is None or
                                 (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920  # 32 minutes
@@ -102,7 +95,7 @@ async def fetch_stock_data():
                                 last_egg_mention_time_pht = now_pht
 
                         # Seeds Stock
-                        elif header == "Seeds Stock" and can_mention_special:
+                        elif header == "Seeds Stock":
                             if "Beanstalk" in name:
                                 mention_everyone = True
                                 special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
@@ -112,21 +105,18 @@ async def fetch_stock_data():
                             elif "Sugar Apple" in name:
                                 mention_everyone = True
                                 special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
+                                
             else:
                 stock_content = "❌ No items available"
         else:
             stock_content = "❌ Stock category not found"
-
+        
         embed.add_field(name=header, value=stock_content, inline=False)
-
-    # Save special mention cooldown state
-    if mention_everyone and special_mention_messages:
-        fetch_stock_data.last_special_mention_time_pht = now_pht
 
     return embed, mention_everyone, special_mention_messages
 
-
 async def update_stock_message(channel):
+    """Update the stock message every 6 minutes based on PHT and mention everyone if special items are in stock."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
@@ -147,11 +137,11 @@ async def update_stock_message(channel):
             )
             await stock_message.edit(embed=error_embed)
 
-        # Align to next 6-minute mark in PHT
+        # Align to the next exact 6-minute PHT mark
         ph_tz = pytz.timezone("Asia/Manila")
-        sleep_seconds = get_next_aligned_time(360, ph_tz)
+        interval_seconds = 360  # 6 minutes
+        sleep_seconds = get_next_aligned_time(interval_seconds, ph_tz)
         await asyncio.sleep(sleep_seconds)
-
 
 @client.event
 async def on_ready():
@@ -166,7 +156,6 @@ async def on_ready():
     if not task_started:
         task_started = True
         client.loop.create_task(update_stock_message(channel))
-
 
 if not TOKEN:
     raise EnvironmentError("DISCORD_TOKEN is not set in the environment.")
