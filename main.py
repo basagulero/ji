@@ -8,7 +8,7 @@ import os
 import math
 
 TOKEN = os.getenv("DISCORD_TOKEN")  # Ensure this is set in your environment
-URL = 'https://growagarden.gg/stocks'
+URL = 'https://growagardenstock.org/'
 CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
 
 intents = discord.Intents.default()
@@ -60,10 +60,20 @@ async def fetch_stock_data():
                 for item in items:
                     name_tag = item.select_one("h3")
                     quantity_tag = item.select_one("data")
+                    img_tag = item.select_one("img")
+
                     if name_tag and quantity_tag:
                         name = name_tag.text.strip()
                         quantity = quantity_tag.text.strip()
-                        stock_content += f"🔹 {name} ({quantity})\n"
+
+                        # Get image URL if available
+                        image_url = img_tag["src"] if img_tag and img_tag.has_attr("src") else None
+                        if image_url:
+                            stock_line = f"🖼️ [{name}]({image_url}) ({quantity})"
+                        else:
+                            stock_line = f"🔹 {name} ({quantity})"
+
+                        stock_content += stock_line + "\n"
 
                         # Gear Stock
                         if header == "Gear Stock" and "Master Sprinkler" in name:
@@ -105,7 +115,6 @@ async def fetch_stock_data():
                             elif "Sugar Apple" in name:
                                 mention_everyone = True
                                 special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
-                                
             else:
                 stock_content = "❌ No items available"
         else:
