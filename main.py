@@ -7,9 +7,9 @@ import pytz
 import os
 import math
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # Make sure this is set in your environment
+TOKEN = os.getenv("DISCORD_TOKEN")
 URL = 'https://growagardenstock.org/'
-CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
+CHANNEL_ID = 1377545700157690078  # Replace with your channel ID
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -21,8 +21,7 @@ def get_next_aligned_time(interval_seconds, timezone):
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
-    delta_seconds = next_multiple - total_seconds_today
-    return delta_seconds
+    return next_multiple - total_seconds_today
 
 async def fetch_stock_data():
     global last_egg_mention_time_pht
@@ -36,7 +35,6 @@ async def fetch_stock_data():
         color=discord.Color.green()
     )
 
-    # Timestamp in Philippine Time
     ph_tz = pytz.timezone("Asia/Manila")
     now = datetime.datetime.now(ph_tz).strftime("%Y-%m-%d %H:%M:%S")
     embed.set_footer(text=f"Updated at {now} PHT")
@@ -44,12 +42,12 @@ async def fetch_stock_data():
     mention_everyone = False
     special_mention_messages = []
 
-    # Parse updated layout
+    # Look for categories and their stock blocks
     category_blocks = soup.select("div.border-b + div.p-4")
-    categories = soup.select("div.border-b > h3")
+    category_titles = soup.select("div.border-b > h3")
 
-    for category, block in zip(categories, category_blocks):
-        header = category.get_text(strip=True)
+    for title, block in zip(category_titles, category_blocks):
+        header = title.get_text(strip=True)
         stock_content = ""
         items = block.select("div.flex.items-center.gap-3")
 
@@ -62,19 +60,19 @@ async def fetch_stock_data():
                 quantity = quantity_tag.text.strip()
                 stock_content += f"🔹 {name} ({quantity})\n"
 
-                # Special mentions
+                # Mentions
                 if header == "Gear Stock" and "Master Sprinkler" in name:
                     mention_everyone = True
                     special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
 
                 elif header == "Egg Stock":
                     now_pht = datetime.datetime.now(ph_tz)
-                    can_mention_eggs = (
+                    can_mention = (
                         last_egg_mention_time_pht is None or
                         (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920
                     )
                     triggered = False
-                    if can_mention_eggs:
+                    if can_mention:
                         if "Mythical Egg" in name:
                             special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
                             triggered = True
@@ -90,14 +88,14 @@ async def fetch_stock_data():
 
                 elif header == "Seeds Stock":
                     if "Beanstalk" in name:
-                        mention_everyone = True
                         special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
+                        mention_everyone = True
                     elif "Ember Lily" in name:
-                        mention_everyone = True
                         special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
-                    elif "Sugar Apple" in name:
                         mention_everyone = True
+                    elif "Sugar Apple" in name:
                         special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
+                        mention_everyone = True
 
         if not stock_content:
             stock_content = "❌ No items available"
@@ -112,34 +110,31 @@ async def update_stock_message(channel):
 
     while True:
         try:
-            new_embed, mention_everyone, special_mention_messages = await fetch_stock_data()
-            await stock_message.edit(embed=new_embed)
-
-            if mention_everyone and special_mention_messages:
-                await channel.send("\n".join(special_mention_messages))
+            embed, mention_everyone, mention_msgs = await fetch_stock_data()
+            await stock_message.edit(embed=embed)
+            if mention_everyone and mention_msgs:
+                await channel.send("\n".join(mention_msgs))
 
         except Exception as e:
-            print(f"Error fetching stock data: {e}")
-            error_embed = discord.Embed(
+            print(f"❌ Error: {e}")
+            await stock_message.edit(embed=discord.Embed(
                 title="Error Fetching Data",
                 description=str(e),
                 color=discord.Color.red()
-            )
-            await stock_message.edit(embed=error_embed)
+            ))
 
-        # Align to the next exact 6-minute PHT mark
-        ph_tz = pytz.timezone("Asia/Manila")
-        sleep_seconds = get_next_aligned_time(360, ph_tz)
-        await asyncio.sleep(sleep_seconds)
+        # Align to 6-minute interval based on Philippine time
+        sleep_time = get_next_aligned_time(360, pytz.timezone("Asia/Manila"))
+        await asyncio.sleep(sleep_time)
 
 @client.event
 async def on_ready():
     global task_started
-    print(f'✅ Logged in as {client.user}')
+    print(f"✅ Logged in as {client.user}")
     channel = client.get_channel(CHANNEL_ID)
 
     if channel is None:
-        print(f"⚠️ Channel with ID {CHANNEL_ID} not found or bot has no access.")
+        print(f"⚠️ Channel ID {CHANNEL_ID} not found or bot lacks permission.")
         return
 
     if not task_started:
@@ -147,6 +142,6 @@ async def on_ready():
         client.loop.create_task(update_stock_message(channel))
 
 if not TOKEN:
-    raise EnvironmentError("DISCORD_TOKEN is not set in the environment.")
+    raise EnvironmentError("DISCORD_TOKEN is not set in environment.")
 
 client.run(TOKEN)
