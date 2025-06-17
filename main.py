@@ -1,15 +1,14 @@
 import discord
-import requests
-from bs4 import BeautifulSoup
 import asyncio
 import datetime
 import pytz
 import os
 import math
+from playwright.async_api import async_playwright
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-URL = 'https://growagardenstock.org/'
-CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
+URL = "https://growagardenstock.org/"
+CHANNEL_ID = 1377545700157690078
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -23,12 +22,41 @@ def get_next_aligned_time(interval_seconds, timezone):
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
     return next_multiple - total_seconds_today
 
+async def scrape_stock_data():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(URL, wait_until="networkidle")
+        await page.wait_for_selector("div.flex.items-center.gap-3", timeout=10000)
+
+        categories = await page.query_selector_all("div.bg-slate-800 >> ..")
+        results = []
+
+        for section in categories:
+            try:
+                header_el = await section.query_selector("h3")
+                header = (await header_el.inner_text()).strip()
+
+                items = await section.query_selector_all("div.flex.items-center.gap-3")
+                category_items = []
+
+                for item in items:
+                    name_el = await item.query_selector("span.font-medium")
+                    qty_el = await item.query_selector("span.font-semibold")
+                    if name_el and qty_el:
+                        name = (await name_el.inner_text()).strip()
+                        qty = (await qty_el.inner_text()).strip()
+                        category_items.append((name, qty))
+
+                results.append((header, category_items))
+            except:
+                continue
+
+        await browser.close()
+        return results
+
 async def fetch_stock_data():
     global last_egg_mention_time_pht
-
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(URL, headers=headers, timeout=10)
-    soup = BeautifulSoup(response.text, 'html.parser')
 
     embed = discord.Embed(
         title="🌱 Grow a Garden - Stock Update",
@@ -42,71 +70,59 @@ async def fetch_stock_data():
     mention_everyone = False
     special_mention_messages = []
 
-    # Find all category sections
-    category_sections = soup.select("div.bg-slate-800\\/50.border")
-    if not category_sections:
-        category_sections = soup.select("div.bg-slate-800/50.border")  # fallback
+    try:
+        stock_data = await scrape_stock_data()
+    except Exception as e:
+        print("❌ Error scraping stock data:", e)
+        embed.add_field(name="Error", value="Could not load data.", inline=False)
+        return embed, False, []
 
-    for section in category_sections:
-        title_tag = section.select_one("h3")
-        block = section.select_one("div.p-4")
-        if not title_tag or not block:
-            continue
-
-        header = title_tag.get_text(strip=True)
+    for header, items in stock_data:
         stock_content = ""
-        items = block.select("div.flex.items-center.gap-3")
+        for name, quantity in items:
+            stock_content += f"🔹 {name} ({quantity})\n"
 
-        for item in items:
-            name_tag = item.select_one("span.font-medium")
-            quantity_tag = item.select_one("span.font-semibold")
+            # Mentions
+            if header == "Gear Stock" and "Master Sprinkler" in name:
+                mention_everyone = True
+                special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
 
-            if name_tag and quantity_tag:
-                name = name_tag.text.strip()
-                quantity = quantity_tag.text.strip()
-                stock_content += f"🔹 {name} ({quantity})\n"
-
-                # Special item mentions
-                if header == "Gear Stock" and "Master Sprinkler" in name:
+            elif header == "Egg Stock":
+                now_pht = datetime.datetime.now(ph_tz)
+                can_mention = (
+                    last_egg_mention_time_pht is None or
+                    (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920
+                )
+                triggered = False
+                if can_mention:
+                    if "Mythical Egg" in name:
+                        special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
+                        triggered = True
+                    elif "Bug Egg" in name:
+                        special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
+                        triggered = True
+                    elif "Legendary Egg" in name:
+                        special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
+                        triggered = True
+                if triggered:
                     mention_everyone = True
-                    special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
+                    last_egg_mention_time_pht = now_pht
 
-                elif header == "Egg Stock":
-                    now_pht = datetime.datetime.now(ph_tz)
-                    can_mention = (
-                        last_egg_mention_time_pht is None or
-                        (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920
-                    )
-                    triggered = False
-                    if can_mention:
-                        if "Mythical Egg" in name:
-                            special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
-                            triggered = True
-                        elif "Bug Egg" in name:
-                            special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
-                            triggered = True
-                        elif "Legendary Egg" in name:
-                            special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
-                            triggered = True
-                    if triggered:
-                        mention_everyone = True
-                        last_egg_mention_time_pht = now_pht
+            elif header == "Seeds Stock":
+                if "Beanstalk" in name:
+                    special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
+                    mention_everyone = True
+                elif "Ember Lily" in name:
+                    special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
+                    mention_everyone = True
+                elif "Sugar Apple" in name:
+                    special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
+                    mention_everyone = True
 
-                elif header == "Seeds Stock":
-                    if "Beanstalk" in name:
-                        special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
-                        mention_everyone = True
-                    elif "Ember Lily" in name:
-                        special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
-                        mention_everyone = True
-                    elif "Sugar Apple" in name:
-                        special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
-                        mention_everyone = True
-
-        if not stock_content:
-            stock_content = "❌ No items available"
-
-        embed.add_field(name=header, value=stock_content, inline=False)
+        if stock_content:
+            embed.add_field(name=header, value=stock_content, inline=False)
+        else:
+            embed.add_field(name=header, value="❌ No items available", inline=False)
 
     return embed, mention_everyone, special_mention_messages
 
@@ -129,7 +145,6 @@ async def update_stock_message(channel):
                 color=discord.Color.red()
             ))
 
-        # Align to next 6-minute PHT interval
         sleep_time = get_next_aligned_time(360, pytz.timezone("Asia/Manila"))
         await asyncio.sleep(sleep_time)
 
