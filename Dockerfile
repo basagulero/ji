@@ -1,22 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
+
+RUN apt-get update && apt-get install -y \
+    wget curl unzip gnupg \
+    libnss3 libxss1 libappindicator1 libindicator7 \
+    fonts-liberation libatk-bridge2.0-0 libgtk-3-0 \
+    libasound2 libgbm-dev libxshmfence1 \
+    chromium chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CHROME_BIN=/usr/bin/chromium
+ENV PATH="/usr/lib/chromium:$PATH"
 
 WORKDIR /app
 
-# Install OS packages for Playwright dependencies
-RUN apt-get update && apt-get install -y wget gnupg curl unzip \
-    ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 \
-    libatk1.0-0 libcups2 libdbus-1-3 libgdk-pixbuf2.0-0 libnspr4 \
-    libnss3 libxcomposite1 libxdamage1 libxrandr2 xdg-utils \
-    libu2f-udev libvulkan1 libxss1 libappindicator3-1 libgbm1 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
-
-# Install Playwright + its browsers
-RUN pip install playwright && playwright install --with-deps
+RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "bot.py"]
+CMD ["python", "main.py"]
