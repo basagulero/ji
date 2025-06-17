@@ -1,12 +1,16 @@
 import discord
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 import asyncio
 import datetime
 import pytz
 import os
 import math
-from playwright.async_api import async_playwright
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ Token now pulled from env
 URL = "https://growagardenstock.org/"
 CHANNEL_ID = 1377545700157690078
 
@@ -22,38 +26,41 @@ def get_next_aligned_time(interval_seconds, timezone):
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
     return next_multiple - total_seconds_today
 
-async def scrape_stock_data():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto(URL, wait_until="networkidle")
-        await page.wait_for_selector("div.flex.items-center.gap-3", timeout=10000)
+def scrape_stock_data():
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.binary_location = "/usr/bin/chromium"
 
-        categories = await page.query_selector_all("div.bg-slate-800 >> ..")
-        results = []
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    driver.get(URL)
+    driver.implicitly_wait(10)
 
-        for section in categories:
-            try:
-                header_el = await section.query_selector("h3")
-                header = (await header_el.inner_text()).strip()
+    data = []
+    category_sections = driver.find_elements(By.CSS_SELECTOR, "div.bg-slate-800\\2f 50.border")
 
-                items = await section.query_selector_all("div.flex.items-center.gap-3")
-                category_items = []
+    for section in category_sections:
+        try:
+            header = section.find_element(By.TAG_NAME, "h3").text.strip()
+            items = section.find_elements(By.CSS_SELECTOR, "div.flex.items-center.gap-3")
+            stock_list = []
 
-                for item in items:
-                    name_el = await item.query_selector("span.font-medium")
-                    qty_el = await item.query_selector("span.font-semibold")
-                    if name_el and qty_el:
-                        name = (await name_el.inner_text()).strip()
-                        qty = (await qty_el.inner_text()).strip()
-                        category_items.append((name, qty))
+            for item in items:
+                try:
+                    name = item.find_element(By.CSS_SELECTOR, "span.font-medium").text.strip()
+                    qty = item.find_element(By.CSS_SELECTOR, "span.font-semibold").text.strip()
+                    stock_list.append((name, qty))
+                except:
+                    continue
 
-                results.append((header, category_items))
-            except:
-                continue
+            data.append((header, stock_list))
+        except:
+            continue
 
-        await browser.close()
-        return results
+    driver.quit()
+    return data
 
 async def fetch_stock_data():
     global last_egg_mention_time_pht
@@ -71,10 +78,10 @@ async def fetch_stock_data():
     special_mention_messages = []
 
     try:
-        stock_data = await scrape_stock_data()
+        stock_data = await asyncio.to_thread(scrape_stock_data)
     except Exception as e:
-        print("❌ Error scraping stock data:", e)
-        embed.add_field(name="Error", value="Could not load data.", inline=False)
+        print("❌ Error during scraping:", e)
+        embed.add_field(name="Error", value="Could not fetch data from website.", inline=False)
         return embed, False, []
 
     for header, items in stock_data:
@@ -82,7 +89,6 @@ async def fetch_stock_data():
         for name, quantity in items:
             stock_content += f"🔹 {name} ({quantity})\n"
 
-            # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
