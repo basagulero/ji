@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright/python:v1.43.1-jammy
+FROM ghcr.io/microsoft/playwright:latest
 
 WORKDIR /app
 COPY . .
