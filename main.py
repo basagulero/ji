@@ -7,18 +7,17 @@ import pytz
 import os
 import math
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # Ensure this is set in your environment
+TOKEN = os.getenv("DISCORD_TOKEN")  # Make sure this is set in your environment
 URL = 'https://growagardenstock.org/'
 CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
-task_started = False  # Prevent multiple tasks from starting
-last_egg_mention_time_pht = None  # Track Egg Stock mention cooldown (PHT-based)
+task_started = False
+last_egg_mention_time_pht = None
 
 def get_next_aligned_time(interval_seconds, timezone):
-    """Calculate seconds until the next aligned interval (e.g., every 360s) in given timezone."""
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
@@ -26,17 +25,11 @@ def get_next_aligned_time(interval_seconds, timezone):
     return delta_seconds
 
 async def fetch_stock_data():
-    """Fetch and format all stock categories from the website."""
     global last_egg_mention_time_pht
 
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(URL, headers=headers, timeout=10)
     soup = BeautifulSoup(response.text, 'html.parser')
-
-    stock_headers = [
-        "Gear Stock", "Egg Stock", "Seeds Stock",
-        "Honey Stock", "Cosmetics Stock"
-    ]
 
     embed = discord.Embed(
         title="🌱 Grow a Garden - Stock Update",
@@ -51,81 +44,69 @@ async def fetch_stock_data():
     mention_everyone = False
     special_mention_messages = []
 
-    for header in stock_headers:
+    # Parse updated layout
+    category_blocks = soup.select("div.border-b + div.p-4")
+    categories = soup.select("div.border-b > h3")
+
+    for category, block in zip(categories, category_blocks):
+        header = category.get_text(strip=True)
         stock_content = ""
-        section = soup.find("h2", string=header)
-        if section:
-            items = section.find_next("section").find_all("article")
-            if items:
-                for item in items:
-                    name_tag = item.select_one("h3")
-                    quantity_tag = item.select_one("data")
-                    img_tag = item.select_one("img")
+        items = block.select("div.flex.items-center.gap-3")
 
-                    if name_tag and quantity_tag:
-                        name = name_tag.text.strip()
-                        quantity = quantity_tag.text.strip()
+        for item in items:
+            name_tag = item.select_one("span.font-medium")
+            quantity_tag = item.select_one("span.font-semibold")
 
-                        # Get image URL if available
-                        image_url = img_tag["src"] if img_tag and img_tag.has_attr("src") else None
-                        if image_url:
-                            stock_line = f"🖼️ [{name}]({image_url}) ({quantity})"
-                        else:
-                            stock_line = f"🔹 {name} ({quantity})"
+            if name_tag and quantity_tag:
+                name = name_tag.text.strip()
+                quantity = quantity_tag.text.strip()
+                stock_content += f"🔹 {name} ({quantity})\n"
 
-                        stock_content += stock_line + "\n"
+                # Special mentions
+                if header == "Gear Stock" and "Master Sprinkler" in name:
+                    mention_everyone = True
+                    special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
 
-                        # Gear Stock
-                        if header == "Gear Stock" and "Master Sprinkler" in name:
-                            mention_everyone = True
-                            special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
+                elif header == "Egg Stock":
+                    now_pht = datetime.datetime.now(ph_tz)
+                    can_mention_eggs = (
+                        last_egg_mention_time_pht is None or
+                        (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920
+                    )
+                    triggered = False
+                    if can_mention_eggs:
+                        if "Mythical Egg" in name:
+                            special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
+                            triggered = True
+                        elif "Bug Egg" in name:
+                            special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
+                            triggered = True
+                        elif "Legendary Egg" in name:
+                            special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
+                            triggered = True
+                    if triggered:
+                        mention_everyone = True
+                        last_egg_mention_time_pht = now_pht
 
-                        # Egg Stock
-                        elif header == "Egg Stock":
-                            now_pht = datetime.datetime.now(ph_tz)
-                            can_mention_eggs = (
-                                last_egg_mention_time_pht is None or
-                                (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920  # 32 minutes
-                            )
+                elif header == "Seeds Stock":
+                    if "Beanstalk" in name:
+                        mention_everyone = True
+                        special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
+                    elif "Ember Lily" in name:
+                        mention_everyone = True
+                        special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
+                    elif "Sugar Apple" in name:
+                        mention_everyone = True
+                        special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
 
-                            triggered = False
-                            if can_mention_eggs:
-                                if "Mythical Egg" in name:
-                                    special_mention_messages.append("@everyone 🥚 Mythical Egg is in stock!")
-                                    triggered = True
-                                elif "Bug Egg" in name:
-                                    special_mention_messages.append("@everyone 🐞 Bug Egg is in stock!")
-                                    triggered = True
-                                elif "Legendary Egg" in name:
-                                    special_mention_messages.append("@everyone 🌟 Legendary Egg is in stock!")
-                                    triggered = True
+        if not stock_content:
+            stock_content = "❌ No items available"
 
-                            if triggered:
-                                mention_everyone = True
-                                last_egg_mention_time_pht = now_pht
-
-                        # Seeds Stock
-                        elif header == "Seeds Stock":
-                            if "Beanstalk" in name:
-                                mention_everyone = True
-                                special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
-                            elif "Ember Lily" in name:
-                                mention_everyone = True
-                                special_mention_messages.append("@everyone 🔥 Ember Lily seed is in stock!")
-                            elif "Sugar Apple" in name:
-                                mention_everyone = True
-                                special_mention_messages.append("@everyone 🍎 Sugar Apple seed is in stock!")
-            else:
-                stock_content = "❌ No items available"
-        else:
-            stock_content = "❌ Stock category not found"
-        
         embed.add_field(name=header, value=stock_content, inline=False)
 
     return embed, mention_everyone, special_mention_messages
 
 async def update_stock_message(channel):
-    """Update the stock message every 6 minutes based on PHT and mention everyone if special items are in stock."""
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
@@ -148,8 +129,7 @@ async def update_stock_message(channel):
 
         # Align to the next exact 6-minute PHT mark
         ph_tz = pytz.timezone("Asia/Manila")
-        interval_seconds = 360  # 6 minutes
-        sleep_seconds = get_next_aligned_time(interval_seconds, ph_tz)
+        sleep_seconds = get_next_aligned_time(360, ph_tz)
         await asyncio.sleep(sleep_seconds)
 
 @client.event
