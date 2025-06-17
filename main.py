@@ -9,7 +9,7 @@ import math
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 URL = 'https://growagardenstock.org/'
-CHANNEL_ID = 1377545700157690078  # Replace with your channel ID
+CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -42,12 +42,18 @@ async def fetch_stock_data():
     mention_everyone = False
     special_mention_messages = []
 
-    # Look for categories and their stock blocks
-    category_blocks = soup.select("div.border-b + div.p-4")
-    category_titles = soup.select("div.border-b > h3")
+    # Find all category sections
+    category_sections = soup.select("div.bg-slate-800\\/50.border")
+    if not category_sections:
+        category_sections = soup.select("div.bg-slate-800/50.border")  # fallback
 
-    for title, block in zip(category_titles, category_blocks):
-        header = title.get_text(strip=True)
+    for section in category_sections:
+        title_tag = section.select_one("h3")
+        block = section.select_one("div.p-4")
+        if not title_tag or not block:
+            continue
+
+        header = title_tag.get_text(strip=True)
         stock_content = ""
         items = block.select("div.flex.items-center.gap-3")
 
@@ -60,7 +66,7 @@ async def fetch_stock_data():
                 quantity = quantity_tag.text.strip()
                 stock_content += f"🔹 {name} ({quantity})\n"
 
-                # Mentions
+                # Special item mentions
                 if header == "Gear Stock" and "Master Sprinkler" in name:
                     mention_everyone = True
                     special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
@@ -123,7 +129,7 @@ async def update_stock_message(channel):
                 color=discord.Color.red()
             ))
 
-        # Align to 6-minute interval based on Philippine time
+        # Align to next 6-minute PHT interval
         sleep_time = get_next_aligned_time(360, pytz.timezone("Asia/Manila"))
         await asyncio.sleep(sleep_time)
 
