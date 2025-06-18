@@ -26,14 +26,6 @@ emoji_map = {
     "Master Sprinkler": "💧"
 }
 
-svg_map = {
-    "Seeds Stock": "lucide-wheat",
-    "Gear Stock": "lucide-swords",
-    "Egg Stock": "lucide-egg",
-    "Honey Stock": "lucide-milk",
-    "Cosmetic Stock": "lucide-sparkles"
-}
-
 def get_next_aligned_time(interval_seconds, timezone):
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
@@ -53,21 +45,26 @@ async def scrape_stock_data():
             print("❌ Timeout waiting for stock sections.")
             return []
 
-        stock_data = []
+        sections = await page.query_selector_all("div.bg-slate-800\\2f 50.border")
+        data = []
 
-        for category, svg_icon in svg_map.items():
+        for section in sections:
             try:
-                selector = f'div:has(h3:has(svg.lucide-{svg_icon}))'
-                section = await page.query_selector(selector)
-                if not section:
-                    continue
+                header = await section.query_selector("h3")
+                header_text = (await header.inner_text()).strip()
 
-                item_divs = await section.query_selector_all("div.flex.items-center")
+                if header_text == "Seeds Stock":
+                    item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
+                else:
+                    item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
 
                 retries = 0
                 while len(item_divs) == 0 and retries < 5:
                     await asyncio.sleep(3)
-                    item_divs = await section.query_selector_all("div.flex.items-center")
+                    if header_text == "Seeds Stock":
+                        item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
+                    else:
+                        item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
                     retries += 1
 
                 stock_list = []
@@ -85,12 +82,12 @@ async def scrape_stock_data():
                     except:
                         continue
 
-                stock_data.append((category, stock_list))
+                data.append((header_text, stock_list))
             except:
                 continue
 
         await browser.close()
-        return stock_data
+        return data
 
 async def fetch_stock_data():
     global last_egg_mention_time_pht
@@ -112,6 +109,7 @@ async def fetch_stock_data():
     stock_data = []
     while tries < 5:
         stock_data = await scrape_stock_data()
+        print("✅ Scraped stock data:", stock_data)  # Debug log
         if all(len(items) > 0 for _, items in stock_data):
             break
         print("⏳ Retrying stock fetch...")
@@ -136,7 +134,7 @@ async def fetch_stock_data():
                 now_pht = datetime.datetime.now(ph_tz)
                 can_mention = (
                     last_egg_mention_time_pht is None or
-                    (now_pht - last_egg_mention_time_pht).total_seconds() >= 1860
+                    (now_pht - last_egg_mention_time_pht).total_seconds() >= 1920
                 )
                 triggered = False
                 if can_mention:
@@ -175,8 +173,6 @@ async def update_stock_message(channel):
     await client.wait_until_ready()
     stock_message = await channel.send(embed=discord.Embed(title="Loading stock data...", color=discord.Color.red()))
 
-    ph_tz = pytz.timezone("Asia/Manila")
-
     while True:
         try:
             embed, mention_everyone, mention_msgs = await fetch_stock_data()
@@ -192,13 +188,7 @@ async def update_stock_message(channel):
                 color=discord.Color.red()
             ))
 
-        now = datetime.datetime.now(ph_tz)
-        if now.minute % 31 == 0:
-            interval = 1860  # 31 minutes
-        else:
-            interval = 360   # 6 minutes
-
-        sleep_time = get_next_aligned_time(interval, ph_tz)
+        sleep_time = get_next_aligned_time(360, pytz.timezone("Asia/Manila"))
         await asyncio.sleep(sleep_time)
 
 @client.event
