@@ -16,6 +16,16 @@ client = discord.Client(intents=intents)
 task_started = False
 last_egg_mention_time_pht = None
 
+emoji_map = {
+    "Mythical Egg": "🥚",
+    "Bug Egg": "🐞",
+    "Legendary Egg": "🌟",
+    "Beanstalk": "🌱",
+    "Ember Lily": "🔥",
+    "Sugar Apple": "🍎",
+    "Master Sprinkler": "💧"
+}
+
 def get_next_aligned_time(interval_seconds, timezone):
     now = datetime.datetime.now(timezone)
     total_seconds_today = now.hour * 3600 + now.minute * 60 + now.second
@@ -25,34 +35,14 @@ def get_next_aligned_time(interval_seconds, timezone):
 async def scrape_stock_data():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-
-        # Set user agent
-        await page.set_user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
-        )
-
-        # Retry page.goto
-        retries = 0
-        while retries < 3:
-            try:
-                await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-                break
-            except Exception as e:
-                print(f"Retry {retries+1}: Failed to load page - {e}")
-                retries += 1
-                await asyncio.sleep(5)
-        else:
-            print("❌ Failed to load page after retries.")
-            await browser.close()
-            return []
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/113.0.0.0 Safari/537.36")
+        page = await context.new_page()
+        await page.goto(URL, timeout=60000)
 
         try:
             await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=30000)
         except:
             print("❌ Timeout waiting for stock sections.")
-            await browser.close()
             return []
 
         sections = await page.query_selector_all("div.bg-slate-800\\2f 50.border")
@@ -82,11 +72,13 @@ async def scrape_stock_data():
                     try:
                         name_elem = await item.query_selector("span.font-medium")
                         qty_elem = await item.query_selector("span.font-semibold")
+                        img_elem = await item.query_selector("img")
 
                         name = (await name_elem.inner_text()).strip()
                         qty = (await qty_elem.inner_text()).strip()
+                        icon = await img_elem.get_attribute("src") if img_elem else None
 
-                        stock_list.append((name, qty))
+                        stock_list.append((name, qty, icon))
                     except:
                         continue
 
@@ -111,6 +103,7 @@ async def fetch_stock_data():
 
     mention_everyone = False
     special_mention_messages = []
+    thumbnail_set = False
 
     tries = 0
     stock_data = []
@@ -124,13 +117,17 @@ async def fetch_stock_data():
 
     for header, items in stock_data:
         stock_content = ""
-        for name, quantity in items:
-            icon_display = f"🔹 {name} ({quantity})"
-            stock_content += f"{icon_display}\n"
+        for name, quantity, icon in items:
+            emoji = emoji_map.get(name, "🔹")
+            stock_content += f"{emoji} {name} ({quantity})\n"
+
+            if not thumbnail_set and icon:
+                embed.set_thumbnail(url=icon)
+                thumbnail_set = True
 
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
-                special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
+                special_mention_messages.append("@everyone 💧 Master Sprinkler is now in stock!")
 
             elif header == "Egg Stock":
                 now_pht = datetime.datetime.now(ph_tz)
