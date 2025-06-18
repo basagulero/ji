@@ -94,8 +94,8 @@ async def fetch_stock_data():
     for header, items in stock_data:
         stock_content = ""
         for name, quantity, img_url in items:
-            icon_display = f"[‎]({img_url})" if img_url else ""
-            stock_content += f"{icon_display} **{name}** ({quantity})\n"
+            icon_display = f"![icon]({img_url}) " if img_url else ""
+            stock_content += f"{icon_display}**{name}** ({quantity})\n"
 
             # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
