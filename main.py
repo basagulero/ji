@@ -49,9 +49,12 @@ async def scrape_stock_data():
 
                 # If no items loaded yet, wait a bit and retry
                 retries = 0
-                while header_text == "Seeds Stock" and len(item_divs) == 0 and retries < 3:
+                while len(item_divs) == 0 and retries < 3:
                     await asyncio.sleep(3)
-                    item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
+                    if header_text == "Seeds Stock":
+                        item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
+                    else:
+                        item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
                     retries += 1
 
                 stock_list = []
@@ -101,8 +104,8 @@ async def fetch_stock_data():
     for header, items in stock_data:
         stock_content = ""
         for name, quantity, img_url in items:
-            icon_display = f"![icon]({img_url}) " if img_url else ""
-            stock_content += f"{icon_display}**{name}** ({quantity})\n"
+            icon_display = f"!icon {name} ({quantity})"
+            stock_content += f"{icon_display}\n"
 
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
@@ -170,7 +173,7 @@ async def update_stock_message(channel):
         await asyncio.sleep(sleep_time)
 
 @client.event
-def on_ready():
+async def on_ready():
     global task_started
     print(f"✅ Logged in as {client.user}")
     channel = client.get_channel(CHANNEL_ID)
