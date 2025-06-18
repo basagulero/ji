@@ -1,12 +1,12 @@
 import discord
-from playwright.sync_api import sync_playwright
 import asyncio
 import datetime
 import pytz
-import os
 import math
+import os
+from playwright.async_api import async_playwright
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # Set this in Railway's environment variables
+TOKEN = os.getenv("DISCORD_TOKEN")
 URL = "https://growagardenstock.org/"
 CHANNEL_ID = 1377545700157690078
 
@@ -22,37 +22,45 @@ def get_next_aligned_time(interval_seconds, timezone):
     next_multiple = math.ceil(total_seconds_today / interval_seconds) * interval_seconds
     return next_multiple - total_seconds_today
 
-def scrape_stock_data():
-    data = []
+async def scrape_stock_data():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(URL, timeout=60000)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(URL, timeout=60000)
-        page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=15000)
+        try:
+            await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=10000)
+        except:
+            print("❌ Timeout waiting for stock sections.")
+            return []
 
-        sections = page.query_selector_all("div.bg-slate-800\\2f 50.border")
+        sections = await page.query_selector_all("div.bg-slate-800\\2f 50.border")
+        data = []
+
         for section in sections:
             try:
-                header = section.query_selector("h3").inner_text().strip()
-                items = section.query_selector_all("div.flex.items-center.gap-3")
+                header = await section.query_selector("h3")
+                header_text = (await header.inner_text()).strip()
+
+                item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
                 stock_list = []
 
-                for item in items:
+                for item in item_divs:
                     try:
-                        name = item.query_selector("span.font-medium").inner_text().strip()
-                        qty = item.query_selector("span.font-semibold").inner_text().strip()
+                        name_elem = await item.query_selector("span.font-medium")
+                        qty_elem = await item.query_selector("span.font-semibold")
+                        name = (await name_elem.inner_text()).strip()
+                        qty = (await qty_elem.inner_text()).strip()
                         stock_list.append((name, qty))
                     except:
                         continue
 
-                data.append((header, stock_list))
+                data.append((header_text, stock_list))
             except:
                 continue
 
-        browser.close()
-
-    return data
+        await browser.close()
+        return data
 
 async def fetch_stock_data():
     global last_egg_mention_time_pht
@@ -70,7 +78,7 @@ async def fetch_stock_data():
     special_mention_messages = []
 
     try:
-        stock_data = await asyncio.to_thread(scrape_stock_data)
+        stock_data = await scrape_stock_data()
     except Exception as e:
         print("❌ Error during scraping:", e)
         embed.add_field(name="Error", value="Could not fetch data from website.", inline=False)
@@ -81,6 +89,7 @@ async def fetch_stock_data():
         for name, quantity in items:
             stock_content += f"🔹 {name} ({quantity})\n"
 
+            # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
