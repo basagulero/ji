@@ -1,18 +1,14 @@
 import discord
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright
 import asyncio
 import datetime
 import pytz
 import os
 import math
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")  # Set this in Railway's environment variables
 URL = "https://growagardenstock.org/"
-CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
+CHANNEL_ID = 1377545700157690078
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -27,37 +23,35 @@ def get_next_aligned_time(interval_seconds, timezone):
     return next_multiple - total_seconds_today
 
 def scrape_stock_data():
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    driver.get(URL)
-    driver.implicitly_wait(10)
-
     data = []
-    category_sections = driver.find_elements(By.CSS_SELECTOR, "div.bg-slate-800\\2f 50.border")
 
-    for section in category_sections:
-        try:
-            header = section.find_element(By.TAG_NAME, "h3").text.strip()
-            items = section.find_elements(By.CSS_SELECTOR, "div.flex.items-center.gap-3")
-            stock_list = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(URL, timeout=60000)
+        page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=15000)
 
-            for item in items:
-                try:
-                    name = item.find_element(By.CSS_SELECTOR, "span.font-medium").text.strip()
-                    qty = item.find_element(By.CSS_SELECTOR, "span.font-semibold").text.strip()
-                    stock_list.append((name, qty))
-                except:
-                    continue
+        sections = page.query_selector_all("div.bg-slate-800\\2f 50.border")
+        for section in sections:
+            try:
+                header = section.query_selector("h3").inner_text().strip()
+                items = section.query_selector_all("div.flex.items-center.gap-3")
+                stock_list = []
 
-            data.append((header, stock_list))
-        except:
-            continue
+                for item in items:
+                    try:
+                        name = item.query_selector("span.font-medium").inner_text().strip()
+                        qty = item.query_selector("span.font-semibold").inner_text().strip()
+                        stock_list.append((name, qty))
+                    except:
+                        continue
 
-    driver.quit()
+                data.append((header, stock_list))
+            except:
+                continue
+
+        browser.close()
+
     return data
 
 async def fetch_stock_data():
@@ -87,7 +81,6 @@ async def fetch_stock_data():
         for name, quantity in items:
             stock_content += f"🔹 {name} ({quantity})\n"
 
-            # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
