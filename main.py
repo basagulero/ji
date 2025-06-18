@@ -10,9 +10,9 @@ import pytz
 import os
 import math
 
-TOKEN = os.getenv("DISCORD_TOKEN")  # ✅ Token now pulled from env
+TOKEN = os.getenv("DISCORD_TOKEN")
 URL = "https://growagardenstock.org/"
-CHANNEL_ID = 1377545700157690078
+CHANNEL_ID = 1377545700157690078  # Replace with your actual channel ID
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -31,8 +31,6 @@ def scrape_stock_data():
     options.add_argument("--headless=new")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.binary_location = "/usr/bin/chromium"
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     driver.get(URL)
@@ -89,6 +87,7 @@ async def fetch_stock_data():
         for name, quantity in items:
             stock_content += f"🔹 {name} ({quantity})\n"
 
+            # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
