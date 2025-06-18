@@ -26,12 +26,33 @@ async def scrape_stock_data():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        await page.goto(URL, timeout=60000)
+
+        # Set user agent
+        await page.set_user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
+        )
+
+        # Retry page.goto
+        retries = 0
+        while retries < 3:
+            try:
+                await page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+                break
+            except Exception as e:
+                print(f"Retry {retries+1}: Failed to load page - {e}")
+                retries += 1
+                await asyncio.sleep(5)
+        else:
+            print("❌ Failed to load page after retries.")
+            await browser.close()
+            return []
 
         try:
             await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=30000)
         except:
             print("❌ Timeout waiting for stock sections.")
+            await browser.close()
             return []
 
         sections = await page.query_selector_all("div.bg-slate-800\\2f 50.border")
