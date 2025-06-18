@@ -47,9 +47,8 @@ async def scrape_stock_data():
                 else:
                     item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
 
-                # If no items loaded yet, wait a bit and retry
                 retries = 0
-                while len(item_divs) == 0 and retries < 3:
+                while len(item_divs) == 0 and retries < 5:
                     await asyncio.sleep(3)
                     if header_text == "Seeds Stock":
                         item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
@@ -60,15 +59,13 @@ async def scrape_stock_data():
                 stock_list = []
                 for item in item_divs:
                     try:
-                        img_elem = await item.query_selector("img")
                         name_elem = await item.query_selector("span.font-medium")
                         qty_elem = await item.query_selector("span.font-semibold")
 
-                        img_url = await img_elem.get_attribute("src") if img_elem else None
                         name = (await name_elem.inner_text()).strip()
                         qty = (await qty_elem.inner_text()).strip()
 
-                        stock_list.append((name, qty, img_url))
+                        stock_list.append((name, qty))
                     except:
                         continue
 
@@ -94,17 +91,20 @@ async def fetch_stock_data():
     mention_everyone = False
     special_mention_messages = []
 
-    try:
+    tries = 0
+    stock_data = []
+    while tries < 5:
         stock_data = await scrape_stock_data()
-    except Exception as e:
-        print("❌ Error during scraping:", e)
-        embed.add_field(name="Error", value="Could not fetch data from website.", inline=False)
-        return embed, False, []
+        if all(len(items) > 0 for _, items in stock_data):
+            break
+        print("⏳ Retrying stock fetch...")
+        await asyncio.sleep(5)
+        tries += 1
 
     for header, items in stock_data:
         stock_content = ""
-        for name, quantity, img_url in items:
-            icon_display = f"!icon {name} ({quantity})"
+        for name, quantity in items:
+            icon_display = f"🔹 {name} ({quantity})"
             stock_content += f"{icon_display}\n"
 
             if header == "Gear Stock" and "Master Sprinkler" in name:
