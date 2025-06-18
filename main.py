@@ -26,19 +26,12 @@ async def scrape_stock_data():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
+        await page.goto(URL, timeout=60000)
 
         try:
-            await page.goto(URL, timeout=60000)
-        except Exception as e:
-            print(f"❌ Page load timeout: {e}")
-            await browser.close()
-            return []
-
-        try:
-            await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=20000)
+            await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=15000)
         except:
             print("❌ Timeout waiting for stock sections.")
-            await browser.close()
             return []
 
         sections = await page.query_selector_all("div.bg-slate-800\\2f 50.border")
@@ -49,30 +42,28 @@ async def scrape_stock_data():
                 header = await section.query_selector("h3")
                 header_text = (await header.inner_text()).strip()
 
-                item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
-                stock_list = []
+                if header_text == "Seeds Stock":
+                    item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
+                else:
+                    item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
 
+                stock_list = []
                 for item in item_divs:
                     try:
-                        name_elem = await item.wait_for_selector("span.font-medium", timeout=3000)
-                        qty_elem = await item.wait_for_selector("span.font-semibold", timeout=3000)
                         img_elem = await item.query_selector("img")
+                        name_elem = await item.query_selector("span.font-medium")
+                        qty_elem = await item.query_selector("span.font-semibold")
 
+                        img_url = await img_elem.get_attribute("src") if img_elem else None
                         name = (await name_elem.inner_text()).strip()
                         qty = (await qty_elem.inner_text()).strip()
-                        img_url = await img_elem.get_attribute("src") if img_elem else None
-
-                        if img_url and img_url.startswith("/"):
-                            img_url = "https://growagardenstock.org" + img_url
 
                         stock_list.append((name, qty, img_url))
-                    except Exception as e:
-                        print(f"⚠️ Skipping item due to timeout or missing element: {e}")
+                    except:
                         continue
 
                 data.append((header_text, stock_list))
-            except Exception as e:
-                print(f"⚠️ Skipping section due to error: {e}")
+            except:
                 continue
 
         await browser.close()
@@ -102,13 +93,11 @@ async def fetch_stock_data():
 
     for header, items in stock_data:
         stock_content = ""
-        first_img_url = None
-
         for name, quantity, img_url in items:
-            stock_content += f"🔹 {name} ({quantity})\n"
-            if not first_img_url and img_url:
-                first_img_url = img_url
+            icon_display = f"[‎]({img_url})" if img_url else ""
+            stock_content += f"{icon_display} **{name}** ({quantity})\n"
 
+            # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
@@ -147,8 +136,6 @@ async def fetch_stock_data():
 
         if stock_content:
             embed.add_field(name=header, value=stock_content, inline=False)
-            if first_img_url:
-                embed.set_image(url=first_img_url)
         else:
             embed.add_field(name=header, value="❌ No items available", inline=False)
 
@@ -164,6 +151,7 @@ async def update_stock_message(channel):
             await stock_message.edit(embed=embed)
             if mention_everyone and mention_msgs:
                 await channel.send("\n".join(mention_msgs))
+
         except Exception as e:
             print(f"❌ Error: {e}")
             await stock_message.edit(embed=discord.Embed(
