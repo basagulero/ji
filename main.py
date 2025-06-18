@@ -103,7 +103,6 @@ async def fetch_stock_data():
 
     mention_everyone = False
     special_mention_messages = []
-    thumbnail_set = False
 
     tries = 0
     stock_data = []
@@ -117,13 +116,9 @@ async def fetch_stock_data():
 
     for header, items in stock_data:
         stock_content = ""
-        for name, quantity, icon in items:
+        for name, quantity, _ in items:
             emoji = emoji_map.get(name, "🔹")
             stock_content += f"{emoji} {name} ({quantity})\n"
-
-            if not thumbnail_set and icon:
-                embed.set_thumbnail(url=icon)
-                thumbnail_set = True
 
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
