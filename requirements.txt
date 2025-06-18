@@ -1,4 +1,3 @@
 discord.py
-selenium
-webdriver-manager
-pytz
+python-dotenv
+playwright
