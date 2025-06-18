@@ -107,9 +107,8 @@ async def fetch_stock_data():
 
     tries = 0
     stock_data = []
-    while tries < 5:
+    while tries < 20:
         stock_data = await scrape_stock_data()
-        print("✅ Scraped stock data:", stock_data)  # Debug log
         if all(len(items) > 0 for _, items in stock_data):
             break
         print("⏳ Retrying stock fetch...")
@@ -163,9 +162,9 @@ async def fetch_stock_data():
                     mention_everyone = True
 
         if stock_content:
-            embed.add_field(name=header, value=stock_content, inline=False)
+            embed.add_field(name=header.upper(), value=stock_content, inline=False)
         else:
-            embed.add_field(name=header, value="❌ No items available", inline=False)
+            embed.add_field(name=header.upper(), value="❌ No items available", inline=False)
 
     return embed, mention_everyone, special_mention_messages
 
