@@ -29,7 +29,7 @@ async def scrape_stock_data():
         await page.goto(URL, timeout=60000)
 
         try:
-            await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=15000)
+            await page.wait_for_selector("div.bg-slate-800\\2f 50.border", timeout=30000)
         except:
             print("❌ Timeout waiting for stock sections.")
             return []
@@ -46,6 +46,13 @@ async def scrape_stock_data():
                     item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
                 else:
                     item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
+
+                # If no items loaded yet, wait a bit and retry
+                retries = 0
+                while header_text == "Seeds Stock" and len(item_divs) == 0 and retries < 3:
+                    await asyncio.sleep(3)
+                    item_divs = await section.query_selector_all("div.p-4 > div > div.flex.items-center.gap-3")
+                    retries += 1
 
                 stock_list = []
                 for item in item_divs:
@@ -97,7 +104,6 @@ async def fetch_stock_data():
             icon_display = f"![icon]({img_url}) " if img_url else ""
             stock_content += f"{icon_display}**{name}** ({quantity})\n"
 
-            # Mentions
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
@@ -164,7 +170,7 @@ async def update_stock_message(channel):
         await asyncio.sleep(sleep_time)
 
 @client.event
-async def on_ready():
+def on_ready():
     global task_started
     print(f"✅ Logged in as {client.user}")
     channel = client.get_channel(CHANNEL_ID)
