@@ -42,7 +42,8 @@ async def scrape_stock_data():
                 header = await section.query_selector("h3")
                 header_text = (await header.inner_text()).strip()
 
-                item_divs = await section.query_selector_all("div.flex.items-center.gap-3")
+                # More flexible selector for items
+                item_divs = await section.query_selector_all("div.flex.items-center.gap-3.py-2")
                 stock_list = []
 
                 for item in item_divs:
@@ -86,15 +87,17 @@ async def fetch_stock_data():
 
     for header, items in stock_data:
         stock_content = ""
+        header_lower = header.lower()
+
         for name, quantity in items:
             stock_content += f"🔹 {name} ({quantity})\n"
 
             # Mentions
-            if header == "Gear Stock" and "Master Sprinkler" in name:
+            if header_lower == "gear stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 🚨 Master Sprinkler is now in stock! 🚨")
 
-            elif header == "Egg Stock":
+            elif header_lower == "egg stock":
                 now_pht = datetime.datetime.now(ph_tz)
                 can_mention = (
                     last_egg_mention_time_pht is None or
@@ -115,7 +118,7 @@ async def fetch_stock_data():
                     mention_everyone = True
                     last_egg_mention_time_pht = now_pht
 
-            elif header == "Seeds Stock":
+            elif header_lower == "seeds stock":
                 if "Beanstalk" in name:
                     special_mention_messages.append("@everyone 🌱 Beanstalk seed is in stock!")
                     mention_everyone = True
