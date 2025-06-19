@@ -48,29 +48,27 @@ async def scrape_stock_data():
         try:
             await page.goto(URL, timeout=60000)
             await page.wait_for_selector("#growAGardenStockTracker", timeout=30000)
-            await page.wait_for_timeout(2000)  # Ensure hydration is finished
+            await page.wait_for_timeout(2000)  # wait for hydration to complete
         except Exception as e:
             print(f"❌ Failed to load or find stock section: {e}")
             await browser.close()
             return []
 
+        # Extract stock data from React hydration (self.__next_f)
         stocks = await page.evaluate("""
             () => {
                 try {
-                    const values = Object.values(window);
-                    for (const v of values) {
-                        if (Array.isArray(v)) {
-                            for (const entry of v) {
-                                if (typeof entry === "string" && entry.includes('"stocks":')) {
-                                    const match = entry.match(/"stocks":({.*?})/);
-                                    if (match) {
-                                        return JSON.parse(match[1]);
-                                    }
-                                }
+                    if (!Array.isArray(window.__next_f)) return null;
+                    for (const entry of window.__next_f) {
+                        if (Array.isArray(entry) && typeof entry[1] === 'string' && entry[1].includes('"stocks":')) {
+                            const match = entry[1].match(/"stocks":(\\{.*?\\})\\n?/s);
+                            if (match) {
+                                return JSON.parse(match[1]);
                             }
                         }
                     }
-                } catch (e) {
+                } catch (err) {
+                    console.error("Parse error", err);
                     return null;
                 }
                 return null;
@@ -83,7 +81,7 @@ async def scrape_stock_data():
             print("❌ No stock data found.")
             return []
 
-        print("📦 Extracted stocks:", stocks)  # Debug: Remove if too verbose
+        print("📦 Extracted stocks:", stocks)  # Debug: remove or keep as needed
 
         formatted = []
         for header, items in stocks.items():
