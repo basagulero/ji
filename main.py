@@ -48,6 +48,7 @@ async def scrape_stock_data():
         try:
             await page.goto(URL, timeout=60000)
             await page.wait_for_selector("#growAGardenStockTracker", timeout=30000)
+            await page.wait_for_timeout(2000)  # Ensure hydration is finished
         except Exception as e:
             print(f"❌ Failed to load or find stock section: {e}")
             await browser.close()
@@ -55,22 +56,22 @@ async def scrape_stock_data():
 
         stocks = await page.evaluate("""
             () => {
-                const values = Object.values(window);
-                for (let v of values) {
-                    if (Array.isArray(v)) {
-                        for (let entry of v) {
-                            if (typeof entry === 'string' && entry.includes('"stocks":')) {
-                                try {
+                try {
+                    const values = Object.values(window);
+                    for (const v of values) {
+                        if (Array.isArray(v)) {
+                            for (const entry of v) {
+                                if (typeof entry === "string" && entry.includes('"stocks":')) {
                                     const match = entry.match(/"stocks":({.*?})/);
                                     if (match) {
                                         return JSON.parse(match[1]);
                                     }
-                                } catch (e) {
-                                    return null;
                                 }
                             }
                         }
                     }
+                } catch (e) {
+                    return null;
                 }
                 return null;
             }
@@ -81,6 +82,8 @@ async def scrape_stock_data():
         if not stocks:
             print("❌ No stock data found.")
             return []
+
+        print("📦 Extracted stocks:", stocks)  # Debug: Remove if too verbose
 
         formatted = []
         for header, items in stocks.items():
@@ -100,14 +103,15 @@ async def fetch_stock_data():
     mention_everyone = False
     special_mention_messages = []
 
-    for attempt in range(20):
+    for attempt in range(5):
         stock_data = await scrape_stock_data()
-        if all(len(items) > 0 for _, items in stock_data):
+        if stock_data:
             break
-        print(f"⏳ Retry #{attempt + 1} - Incomplete stock data.")
+        print(f"⏳ Retry #{attempt + 1} - No stock found.")
         await asyncio.sleep(5)
     else:
-        raise RuntimeError("Failed to fetch valid stock data after 20 attempts.")
+        embed.add_field(name="NO STOCK", value="❌ Unable to retrieve any items.", inline=False)
+        return embed, False, []
 
     for header, items in stock_data:
         stock_content = ""
@@ -115,7 +119,6 @@ async def fetch_stock_data():
             emoji = emoji_map.get(name, "🔹")
             stock_content += f"{emoji} {name} ({quantity})\n"
 
-            # === Mentions based on item type ===
             if header == "Gear Stock" and "Master Sprinkler" in name:
                 mention_everyone = True
                 special_mention_messages.append("@everyone 💧 Master Sprinkler is now in stock!")
