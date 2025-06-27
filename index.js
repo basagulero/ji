@@ -1,6 +1,5 @@
 require('dotenv').config();
 const fs = require('fs');
-const path = require('path');
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -15,13 +14,17 @@ for (const file of commandFiles) {
   commands.push(command.data.toJSON());
 }
 
-// Register slash commands
+// 🌍 Register global slash commands (may take up to 1 hour to appear)
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
 (async () => {
   try {
-    console.log('🔁 Registering slash commands...');
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    console.log('✅ Slash commands registered.');
+    console.log('🔁 Registering global slash commands...');
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+    console.log('✅ Global slash commands registered.');
   } catch (error) {
     console.error('❌ Error registering commands:', error);
   }
@@ -40,7 +43,7 @@ client.on('interactionCreate', async interaction => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-    await interaction.reply({ content: '⚠️ Something went wrong!', ephemeral: true });
+    await interaction.reply({ content: '⚠️ There was an error.', ephemeral: true });
   }
 });
 
